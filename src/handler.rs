@@ -5,7 +5,11 @@ use crate::{
 use actix_web::{delete, get, patch, post, web, HttpResponse, Responder};
 use chrono::Utc;
 use futures::stream::{StreamExt, TryStreamExt};
-use mongodb::{bson::doc, options::FindOptions, Client};
+use mongodb::{
+    bson::doc,
+    options::{FindOneAndUpdateOptions, FindOptions, ReturnDocument},
+    Client,
+};
 use uuid::Uuid;
 
 pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
@@ -14,7 +18,7 @@ pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
         .service(todos_list_handler)
         .service(create_todo_handler)
         .service(get_todo_handler)
-        //.service(update_todo_handler)
+        .service(update_todo_handler)
         //.service(delete_todo_handler);
         ;
     cfg.service(scope);
@@ -135,50 +139,75 @@ pub(crate) async fn get_todo_handler(
     HttpResponse::Ok().json(json_response)
 }
 
-// #[patch("/todos/{id}")]
-// pub(crate) async fn update_todo_handler(
-//     path: web::Path<String>,
-//     body: web::Json<UpdateToDoSchema>,
-//     data: web::Data<AppState>,
-// ) -> impl Responder {
-//     let mut todos = data.todo_db.lock().unwrap();
-//
-//     let id = path.into_inner();
-//     let todo = todos.iter_mut().find(|item| item.id == Some(id.clone()));
-//
-//     if todo.is_none() {
-//         let error_response = GenericResponse {
-//             status: "fail".to_string(),
-//             message: format!("ToDo with id : '{}' not found", id),
-//         };
-//         return HttpResponse::NotFound().json(error_response);
-//     }
-//
-//     let todo /* mutable reference */ = todo.unwrap();
-//     let datetime = Utc::now();
-//     let title = body.title.to_owned().unwrap_or(todo.title.to_owned());
-//     let content = body.content.to_owned().unwrap_or(todo.content.to_owned());
-//     let payload = ToDo {
-//         id: todo.id.to_owned(),
-//         title,
-//         content,
-//         completed: if !body.completed.is_none() {
-//             body.completed
-//         } else {
-//             todo.completed.to_owned()
-//         },
-//         created_at: todo.created_at,
-//         updated_at: Some(datetime),
-//     };
-//     *todo = payload;
-//     let json_response = ToDoInfo {
-//         status: "success".to_string(),
-//         data: ToDoData { todo: todo.clone() },
-//     };
-//
-//     HttpResponse::Ok().json(json_response)
-// }
-//
+#[patch("/todos/{id}")]
+pub(crate) async fn update_todo_handler(
+    path: web::Path<String>,
+    body: web::Json<UpdateToDoSchema>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let todos: mongodb::Collection<ToDo> = state
+        .connection_pool
+        .database(&state.database_name)
+        .collection(&state.collection_name);
+
+    let id = path.into_inner();
+    let todo = todos
+        .find_one(doc! {"_id": id.clone()}, None)
+        .await
+        .expect("error looking up the document in 'ToDo'");
+
+    if todo.is_none() {
+        let error_response = GenericResponse {
+            status: "fail".to_string(),
+            message: format!("ToDo with id : '{}' not found", id),
+        };
+        return HttpResponse::NotFound().json(error_response);
+    }
+
+    let todo = todo.unwrap();
+
+    let datetime = Utc::now();
+    let title = body.title.to_owned().unwrap_or(todo.title.clone());
+    let update_result = todos
+        .find_one_and_update(
+            doc! { "_id":id.clone()},
+            doc! {
+                "$set" : doc!{
+                    "title": title,
+                    "content": if !body.content.is_none() {
+                        body.content.clone()
+                    } else {
+                        todo.content.to_owned()
+                    },
+                    "completed": if !body.completed.is_none() {
+                        body.completed.unwrap()
+                    } else {
+                        todo.completed.to_owned()
+                    },
+                    "updated_at": datetime.to_string(),
+                }
+            },
+            FindOneAndUpdateOptions::builder()
+                .return_document(ReturnDocument::After)
+                .build(),
+        )
+        .await
+        .expect("error updating the todo");
+    if let Some(updated_todo) = update_result {
+        let json_response = ToDoInfo {
+            status: "success".to_string(),
+            data: ToDoData { todo: updated_todo },
+        };
+        return HttpResponse::Ok().json(json_response);
+    } else {
+        let error_response = GenericResponse {
+            status: "fail".to_string(),
+            message: format!("ToDo with id : '{}' not found", &id),
+        };
+        return HttpResponse::NotFound().json(error_response);
+    }
+}
+
 // #[delete("/todos/{id}")]
 // pub(crate) async fn delete_todo_handler(
 //     path: web::Path<String>,

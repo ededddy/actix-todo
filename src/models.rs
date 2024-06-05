@@ -31,6 +31,7 @@ pub(crate) struct CreateToDoSchema {
 impl Into<ToDo> for CreateToDoSchema {
     fn into(self) -> ToDo {
         let uuid_v4 = Uuid::new_v4();
+        println!("{}", uuid_v4);
         let datetime = Utc::now();
         let completed = self.completed.unwrap_or(false);
 
