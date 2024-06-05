@@ -1,3 +1,4 @@
+pub(crate) mod database;
 pub(crate) mod handler;
 pub(crate) mod models;
 pub(crate) mod responses;
@@ -12,10 +13,9 @@ async fn main() -> std::io::Result<()> {
         std::env::set_var("RUST_LOG", "actix_web=info");
     }
     env_logger::init();
-    let todo_db = AppState::init();
-    let app_data = web::Data::new(todo_db);
 
     println!("🚀 Server started successfully");
+    let app_state = AppState::init().await;
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -31,7 +31,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .wrap(Logger::default())
-            .app_data(app_data.clone())
+            .app_data(web::Data::new(app_state.clone()))
             .configure(web_service_config)
     })
     .bind(("127.0.0.1", 8000))?

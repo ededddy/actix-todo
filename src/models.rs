@@ -1,6 +1,7 @@
+use crate::database::init_client;
 use chrono::{DateTime, Utc};
+use mongodb::Client;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct ToDo {
@@ -10,18 +11,6 @@ pub(crate) struct ToDo {
     pub(crate) completed: Option<bool>,
     pub(crate) created_at: Option<DateTime<Utc>>,
     pub(crate) updated_at: Option<DateTime<Utc>>,
-}
-
-pub struct AppState {
-    pub todo_db: Arc<Mutex<Vec<ToDo>>>,
-}
-
-impl AppState {
-    pub(crate) fn init() -> Self {
-        AppState {
-            todo_db: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,4 +24,25 @@ pub(crate) struct UpdateToDoSchema {
     pub(crate) title: Option<String>,
     pub(crate) content: Option<String>,
     pub(crate) completed: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AppState {
+    pub(crate) connection_pool: Client,
+    pub(crate) database_name: String,
+    pub(crate) collection_name: String,
+}
+
+impl AppState {
+    pub(crate) async fn init() -> Self {
+        let db_name = env!("db_name");
+        let collection_name = env!("collection_name");
+        let pool = init_client(db_name, collection_name).await;
+
+        Self {
+            connection_pool: pool.clone(),
+            database_name: db_name.to_string(),
+            collection_name: collection_name.to_string(),
+        }
+    }
 }
