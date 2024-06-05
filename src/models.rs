@@ -2,21 +2,47 @@ use crate::database::init_client;
 use chrono::{DateTime, Utc};
 use mongodb::Client;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct ToDo {
-    pub(crate) id: Option<String>,
+    #[serde(rename = "_id")]
+    pub(crate) id: String,
     pub(crate) title: String,
-    pub(crate) content: String,
-    pub(crate) completed: Option<bool>,
-    pub(crate) created_at: Option<DateTime<Utc>>,
-    pub(crate) updated_at: Option<DateTime<Utc>>,
+    pub(crate) content: Option<String>,
+    pub(crate) completed: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct QueryOptions {
     pub(crate) page: Option<usize>,
     pub(crate) limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CreateToDoSchema {
+    pub(crate) title: String,
+    pub(crate) content: Option<String>,
+    pub(crate) completed: Option<bool>,
+}
+
+impl Into<ToDo> for CreateToDoSchema {
+    fn into(self) -> ToDo {
+        let uuid_v4 = Uuid::new_v4();
+        let datetime = Utc::now();
+        let completed = self.completed.unwrap_or(false);
+
+        ToDo {
+            id: uuid_v4.to_string(),
+            title: self.title,
+            content: self.content,
+            completed,
+            created_at: datetime,
+            updated_at: datetime,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

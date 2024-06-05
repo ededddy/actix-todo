@@ -1,19 +1,19 @@
 use crate::{
-    models::{AppState, QueryOptions, ToDo, UpdateToDoSchema},
+    models::{AppState, CreateToDoSchema, QueryOptions, ToDo, UpdateToDoSchema},
     responses::{GenericResponse, ToDoData, ToDoInfo, ToDoListResponse},
 };
 use actix_web::{delete, get, patch, post, web, HttpResponse, Responder};
 use chrono::Utc;
 use futures::stream::{StreamExt, TryStreamExt};
-use mongodb::{options::FindOptions, Client};
+use mongodb::{bson::doc, options::FindOptions, Client};
 use uuid::Uuid;
 
 pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api")
         .service(healthcheck_handler)
         .service(todos_list_handler)
-        //.service(create_todo_handler)
-        //.service(get_todo_handler)
+        .service(create_todo_handler)
+        .service(get_todo_handler)
         //.service(update_todo_handler)
         //.service(delete_todo_handler);
         ;
@@ -21,9 +21,9 @@ pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
 }
 
 #[get("/healthchecks")]
-pub(crate) async fn healthcheck_handler(conn_pool: web::Data<Client>) -> impl Responder {
+pub(crate) async fn healthcheck_handler(state: web::Data<AppState>) -> impl Responder {
     const MESSAGE: &str = "All Depended Service are in healthy shape";
-    match conn_pool.list_database_names(None, None).await {
+    match state.connection_pool.list_database_names(None, None).await {
         Ok(_) => {
             let response_json = GenericResponse {
                 status: "healthy".to_string(),
@@ -72,66 +72,69 @@ pub async fn todos_list_handler(
     };
     HttpResponse::Ok().json(json_response)
 }
-//
-// #[post("/todos")]
-// pub(crate) async fn create_todo_handler(
-//     mut body: web::Json<ToDo>,
-//     data: web::Data<AppState>,
-// ) -> impl Responder {
-//     let mut todos = data.todo_db.lock().unwrap();
-//
-//     let todo = todos.iter().find(|todo| todo.title == body.title);
-//
-//     if todo.is_some() {
-//         let error_response = GenericResponse {
-//             status: "fail".to_string(),
-//             message: format!("ToDo with title:'{}' already exists", body.title),
-//         };
-//         return HttpResponse::Conflict().json(error_response);
-//     }
-//     let uuid_v4 = Uuid::new_v4();
-//     let datetime = Utc::now();
-//
-//     body.id = Some(uuid_v4.to_string());
-//     body.completed = Some(false);
-//     body.created_at = Some(datetime);
-//     body.updated_at = Some(datetime);
-//
-//     let todo = body.to_owned();
-//     todos.push(body.into_inner());
-//
-//     let json_response = ToDoInfo {
-//         status: "success".to_string(),
-//         data: ToDoData { todo },
-//     };
-//
-//     HttpResponse::Ok().json(json_response)
-// }
-//
-// #[get("/todos/{id}")]
-// pub(crate) async fn get_todo_handler(
-//     path: web::Path<String>,
-//     data: web::Data<AppState>,
-// ) -> impl Responder {
-//     let todos = data.todo_db.lock().unwrap();
-//
-//     let id = path.into_inner();
-//     let todo = todos.iter().find(|item| item.id == Some(id.to_string()));
-//     if todo.is_none() {
-//         let error_response = GenericResponse {
-//             status: "fail".to_string(),
-//             message: format!("ToDo with id : '{}' not found", id),
-//         };
-//         return HttpResponse::NotFound().json(error_response);
-//     }
-//     let todo = todo.unwrap();
-//     let json_response = ToDoInfo {
-//         status: "success".to_string(),
-//         data: ToDoData { todo: todo.clone() },
-//     };
-//     HttpResponse::Ok().json(json_response)
-// }
-//
+
+#[post("/todos")]
+pub(crate) async fn create_todo_handler(
+    body: web::Json<CreateToDoSchema>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let todos: mongodb::Collection<ToDo> = state
+        .connection_pool
+        .database(&state.database_name)
+        .collection(&state.collection_name);
+
+    let body = body.into_inner();
+
+    let todo: ToDo = body.into();
+    let insert_result = todos.insert_one(todo.clone(), None).await;
+    match insert_result {
+        Ok(_) => {
+            let json_response = ToDoInfo {
+                status: "success".to_string(),
+                data: ToDoData { todo },
+            };
+
+            return HttpResponse::Ok().json(json_response);
+        }
+        Err(error) => HttpResponse::InternalServerError().json(GenericResponse {
+            status: "fail".to_string(),
+            message: format!("Failed to add todo. Reason:{}", error),
+        }),
+    }
+}
+
+#[get("/todos/{id}")]
+pub(crate) async fn get_todo_handler(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let todos: mongodb::Collection<ToDo> = state
+        .connection_pool
+        .database(&state.database_name)
+        .collection(&state.collection_name);
+
+    let id = path.into_inner();
+    let todo = todos
+        .find_one(doc! {"_id": id.clone()}, None)
+        .await
+        .expect("error looking up the document in 'ToDo'");
+
+    if todo.is_none() {
+        let error_response = GenericResponse {
+            status: "fail".to_string(),
+            message: format!("ToDo with id : '{}' not found", id),
+        };
+        return HttpResponse::NotFound().json(error_response);
+    }
+
+    let todo = todo.unwrap();
+    let json_response = ToDoInfo {
+        status: "success".to_string(),
+        data: ToDoData { todo },
+    };
+    HttpResponse::Ok().json(json_response)
+}
+
 // #[patch("/todos/{id}")]
 // pub(crate) async fn update_todo_handler(
 //     path: web::Path<String>,

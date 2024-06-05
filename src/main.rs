@@ -10,12 +10,13 @@ use actix_web::{http::header, middleware::Logger, web, App, HttpServer};
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "actix_web=info");
+        std::env::set_var("RUST_LOG", "actix_web=debug");
     }
     env_logger::init();
 
     println!("🚀 Server started successfully");
     let app_state = AppState::init().await;
+    let app_data = web::Data::new(app_state.clone());
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -31,7 +32,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .wrap(Logger::default())
-            .app_data(web::Data::new(app_state.clone()))
+            .app_data(app_data.clone())
             .configure(web_service_config)
     })
     .bind(("127.0.0.1", 8000))?
