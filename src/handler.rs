@@ -4,13 +4,11 @@ use crate::{
 };
 use actix_web::{delete, get, patch, post, web, HttpResponse, Responder};
 use chrono::Utc;
-use futures::stream::{StreamExt, TryStreamExt};
+use futures::stream::TryStreamExt;
 use mongodb::{
     bson::doc,
     options::{FindOneAndUpdateOptions, FindOptions, ReturnDocument},
-    Client,
 };
-use uuid::Uuid;
 
 pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api")
@@ -19,8 +17,7 @@ pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
         .service(create_todo_handler)
         .service(get_todo_handler)
         .service(update_todo_handler)
-        //.service(delete_todo_handler);
-        ;
+        .service(delete_todo_handler);
     cfg.service(scope);
 }
 
@@ -208,24 +205,20 @@ pub(crate) async fn update_todo_handler(
     }
 }
 
-// #[delete("/todos/{id}")]
-// pub(crate) async fn delete_todo_handler(
-//     path: web::Path<String>,
-//     data: web::Data<AppState>,
-// ) -> impl Responder {
-//     let mut todos = data.todo_db.lock().unwrap();
-//
-//     let id = path.into_inner();
-//     let todo = todos.iter_mut().find(|item| item.id == Some(id.to_owned()));
-//
-//     if todo.is_none() {
-//         let error_response = GenericResponse {
-//             status: "fail".to_string(),
-//             message: format!("ToDo with id : '{}' not found", id),
-//         };
-//         return HttpResponse::NotFound().json(error_response);
-//     }
-//
-//     todos.retain(|item| item.id != Some(id.to_owned()));
-//     HttpResponse::NoContent().finish()
-// }
+#[delete("/todos/{id}")]
+pub(crate) async fn delete_todo_handler(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let todos: mongodb::Collection<ToDo> = state
+        .connection_pool
+        .database(&state.database_name)
+        .collection(&state.collection_name);
+    let id = path.into_inner();
+    let _delete_result = todos
+        .delete_one(doc! { "_id": id}, None)
+        .await
+        .expect("Error deleting targeted todo");
+
+    HttpResponse::NoContent().finish()
+}
