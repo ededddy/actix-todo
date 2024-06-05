@@ -1,4 +1,5 @@
-use mongodb::Client;
+use mongodb::{bson::doc, Client, Collection};
+use serde::de::DeserializeOwned;
 
 pub(crate) async fn init_client(db_name: &str, collection_name: &str) -> Client {
     let connection_url = env!("mongo_connection_string");
@@ -21,4 +22,27 @@ pub(crate) async fn create_todo_collection(client: &Client, db_name: &str, colle
             .await
             .expect("error creating collection {collection_name}");
     }
+}
+
+pub(crate) fn get_collection<T>(
+    connection_pool: &Client,
+    database_name: &str,
+    collection_name: &str,
+) -> Collection<T>
+where
+    T: DeserializeOwned + Unpin + Send + Sync,
+{
+    connection_pool
+        .database(&database_name)
+        .collection::<T>(&collection_name)
+}
+
+pub(crate) async fn get_by_id<T>(collection: &Collection<T>, id: &str) -> Option<T>
+where
+    T: DeserializeOwned + Unpin + Send + Sync,
+{
+    collection
+        .find_one(doc! { "_id":id}, None)
+        .await
+        .expect("error looking up the document in 'ToDo'")
 }

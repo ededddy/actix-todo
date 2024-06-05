@@ -1,4 +1,5 @@
 use crate::{
+    database::{get_by_id, get_collection},
     models::{AppState, CreateToDoSchema, QueryOptions, ToDo, UpdateToDoSchema},
     responses::{GenericResponse, ToDoData, ToDoInfo, ToDoListResponse},
 };
@@ -45,10 +46,11 @@ pub async fn todos_list_handler(
     opts: web::Query<QueryOptions>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let todos = state
-        .connection_pool
-        .database(&state.database_name)
-        .collection(&state.collection_name);
+    let todos: mongodb::Collection<ToDo> = get_collection(
+        &state.connection_pool,
+        &state.database_name,
+        &state.collection_name,
+    );
 
     let limit = opts.limit.unwrap_or(10);
     let offset = (opts.page.unwrap_or(1) - 1) * limit;
@@ -79,10 +81,11 @@ pub(crate) async fn create_todo_handler(
     body: web::Json<CreateToDoSchema>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let todos: mongodb::Collection<ToDo> = state
-        .connection_pool
-        .database(&state.database_name)
-        .collection(&state.collection_name);
+    let todos: mongodb::Collection<ToDo> = get_collection(
+        &state.connection_pool,
+        &state.database_name,
+        &state.collection_name,
+    );
 
     let body = body.into_inner();
 
@@ -109,16 +112,14 @@ pub(crate) async fn get_todo_handler(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let todos: mongodb::Collection<ToDo> = state
-        .connection_pool
-        .database(&state.database_name)
-        .collection(&state.collection_name);
+    let todos: mongodb::Collection<ToDo> = get_collection(
+        &state.connection_pool,
+        &state.database_name,
+        &state.collection_name,
+    );
 
     let id = path.into_inner();
-    let todo = todos
-        .find_one(doc! {"_id": id.clone()}, None)
-        .await
-        .expect("error looking up the document in 'ToDo'");
+    let todo = get_by_id(&todos, &id).await;
 
     if todo.is_none() {
         let error_response = GenericResponse {
@@ -142,16 +143,14 @@ pub(crate) async fn update_todo_handler(
     body: web::Json<UpdateToDoSchema>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let todos: mongodb::Collection<ToDo> = state
-        .connection_pool
-        .database(&state.database_name)
-        .collection(&state.collection_name);
+    let todos: mongodb::Collection<ToDo> = get_collection(
+        &state.connection_pool,
+        &state.database_name,
+        &state.collection_name,
+    );
 
     let id = path.into_inner();
-    let todo = todos
-        .find_one(doc! {"_id": id.clone()}, None)
-        .await
-        .expect("error looking up the document in 'ToDo'");
+    let todo = get_by_id(&todos, &id).await;
 
     if todo.is_none() {
         let error_response = GenericResponse {
@@ -210,10 +209,11 @@ pub(crate) async fn delete_todo_handler(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let todos: mongodb::Collection<ToDo> = state
-        .connection_pool
-        .database(&state.database_name)
-        .collection(&state.collection_name);
+    let todos: mongodb::Collection<ToDo> = get_collection(
+        &state.connection_pool,
+        &state.database_name,
+        &state.collection_name,
+    );
     let id = path.into_inner();
     let _delete_result = todos
         .delete_one(doc! { "_id": id}, None)
