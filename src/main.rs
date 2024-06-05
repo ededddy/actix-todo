@@ -19,8 +19,8 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allowed_origin("http:://localhost::3000")
-            .allowed_origin("http:://localhost::3000/")
+            .allowed_origin("http://localhost:3000")
+            .allowed_origin("http://localhost:3000/")
             .allowed_methods(vec!["GET", "POST"])
             .allowed_headers(vec![
                 header::CONTENT_TYPE,
@@ -29,11 +29,10 @@ async fn main() -> std::io::Result<()> {
             ])
             .supports_credentials();
         App::new()
+            .wrap(cors)
+            .wrap(Logger::default())
             .app_data(app_data.clone())
             .configure(web_service_config)
-            // TODO: cors crash server
-            // .wrap(cors)
-            .wrap(Logger::default())
     })
     .bind(("127.0.0.1", 8000))?
     .run()
