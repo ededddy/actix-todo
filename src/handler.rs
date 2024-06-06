@@ -1,7 +1,7 @@
 use crate::{
-    auth_validator::ok_validator,
+    auth_validator::{encode_user, ok_validator},
     database::{get_by_id, get_collection},
-    models::{AppState, CreateToDoSchema, QueryOptions, ToDo, UpdateToDoSchema},
+    models::{AppState, CreateToDoSchema, QueryOptions, ToDo, UpdateToDoSchema, User, UserRequest},
     responses::{GenericResponse, ToDoData, ToDoInfo, ToDoListResponse},
 };
 use actix_web::{delete, get, patch, post, web, HttpResponse, Responder};
@@ -26,6 +26,14 @@ pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
         .service(update_todo_handler)
         .service(delete_todo_handler);
     cfg.service(scope);
+}
+
+pub(crate) fn auth_service_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/users")
+            .service(register_user_handler)
+            .service(login_user_handler),
+    );
 }
 
 pub(crate) async fn healthcheck_handler(state: web::Data<AppState>) -> impl Responder {
@@ -226,4 +234,65 @@ pub(crate) async fn delete_todo_handler(
         .expect("Error deleting targeted todo");
 
     HttpResponse::NoContent().finish()
+}
+
+#[post("/register")]
+pub(crate) async fn register_user_handler(
+    reg: web::Json<UserRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let users: mongodb::Collection<User> = get_collection(
+        &state.connection_pool,
+        &state.database_name,
+        &state.user_collection_name,
+    );
+    let user: User = reg.into_inner().into();
+    let token = encode_user(&user).expect("error encoding user to jwt token");
+    match users.insert_one(&user, None).await {
+        Ok(_) => HttpResponse::Ok().json(GenericResponse {
+            status: "success".to_string(),
+            message: token,
+        }),
+        Err(error) => HttpResponse::InternalServerError().json(GenericResponse {
+            status: "error".to_string(),
+            message: error.to_string(),
+        }),
+    }
+}
+
+#[post("/login")]
+pub(crate) async fn login_user_handler(
+    reg: web::Json<UserRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let users: mongodb::Collection<User> = get_collection(
+        &state.connection_pool,
+        &state.database_name,
+        &state.user_collection_name,
+    );
+    let reg = reg.into_inner();
+    let user_lookup = users
+        .find_one(
+            doc! {
+                "username": reg.username,
+                "password": reg.password,
+            },
+            None,
+        )
+        .await
+        .expect("error finding user");
+
+    match user_lookup {
+        Some(user) => {
+            let token = encode_user(&user).expect("error encoding user to jwt token");
+            return HttpResponse::Ok().json(GenericResponse {
+                status: "success".to_string(),
+                message: token,
+            });
+        }
+        None => HttpResponse::NotFound().json(GenericResponse {
+            status: "error".to_string(),
+            message: "username / password incorret".to_string(),
+        }),
+    }
 }

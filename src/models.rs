@@ -1,8 +1,63 @@
 use crate::database::init_client;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Days, Utc};
 use mongodb::Client;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Claims {
+    pub(crate) sub: String,
+    pub(crate) exp: i64,
+}
+impl From<&User> for Claims {
+    fn from(value: &User) -> Self {
+        let expiry = Utc::now()
+            .checked_add_days(Days::new(1))
+            .unwrap()
+            .timestamp();
+        Self {
+            sub: value.id.clone(),
+            exp: expiry,
+        }
+    }
+}
+
+impl From<User> for Claims {
+    fn from(value: User) -> Self {
+        let expiry = Utc::now()
+            .checked_add_days(Days::new(1))
+            .unwrap()
+            .timestamp();
+        Self {
+            sub: value.id,
+            exp: expiry,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub(crate) struct User {
+    #[serde(rename = "_id")]
+    pub(crate) id: String,
+    pub(crate) username: String,
+    pub(crate) password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct UserRequest {
+    pub(crate) username: String,
+    pub(crate) password: String,
+}
+impl From<UserRequest> for User {
+    fn from(value: UserRequest) -> Self {
+        let id = Uuid::new_v4();
+        Self {
+            id: id.to_string(),
+            username: value.username,
+            password: value.password,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct ToDo {
@@ -58,18 +113,21 @@ pub(crate) struct AppState {
     pub(crate) connection_pool: Client,
     pub(crate) database_name: String,
     pub(crate) collection_name: String,
+    pub(crate) user_collection_name: String,
 }
 
 impl AppState {
     pub(crate) async fn init() -> Self {
         let db_name = env!("db_name");
         let collection_name = env!("collection_name");
-        let pool = init_client(db_name, collection_name).await;
+        let user_collection_name = env!("user_collection_name");
+        let pool = init_client(db_name, collection_name, user_collection_name).await;
 
         Self {
             connection_pool: pool.clone(),
             database_name: db_name.to_string(),
             collection_name: collection_name.to_string(),
+            user_collection_name: user_collection_name.to_string(),
         }
     }
 }

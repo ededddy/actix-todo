@@ -5,7 +5,7 @@ pub(crate) mod models;
 pub(crate) mod responses;
 
 use crate::{
-    handler::{healthchecks_config, web_service_config},
+    handler::{auth_service_config, healthchecks_config, web_service_config},
     models::AppState,
 };
 use actix_cors::Cors;
@@ -38,6 +38,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .app_data(app_data.clone())
             .configure(healthchecks_config)
+            .configure(auth_service_config)
             .configure(web_service_config)
     })
     .bind(("127.0.0.1", 8000))?
