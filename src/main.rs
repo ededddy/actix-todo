@@ -1,9 +1,13 @@
+pub(crate) mod auth_validator;
 pub(crate) mod database;
 pub(crate) mod handler;
 pub(crate) mod models;
 pub(crate) mod responses;
 
-use crate::{handler::web_service_config, models::AppState};
+use crate::{
+    handler::{healthchecks_config, web_service_config},
+    models::AppState,
+};
 use actix_cors::Cors;
 use actix_web::{http::header, middleware::Logger, web, App, HttpServer};
 
@@ -33,6 +37,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(Logger::default())
             .app_data(app_data.clone())
+            .configure(healthchecks_config)
             .configure(web_service_config)
     })
     .bind(("127.0.0.1", 8000))?

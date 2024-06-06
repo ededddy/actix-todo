@@ -1,9 +1,11 @@
 use crate::{
+    auth_validator::ok_validator,
     database::{get_by_id, get_collection},
     models::{AppState, CreateToDoSchema, QueryOptions, ToDo, UpdateToDoSchema},
     responses::{GenericResponse, ToDoData, ToDoInfo, ToDoListResponse},
 };
 use actix_web::{delete, get, patch, post, web, HttpResponse, Responder};
+use actix_web_httpauth::middleware::HttpAuthentication;
 use chrono::Utc;
 use futures::stream::TryStreamExt;
 use mongodb::{
@@ -11,9 +13,13 @@ use mongodb::{
     options::{FindOneAndUpdateOptions, FindOptions, ReturnDocument},
 };
 
+pub(crate) fn healthchecks_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(web::resource("healthchecks").route(web::get().to(healthcheck_handler)));
+}
+
 pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api")
-        .service(healthcheck_handler)
+        .wrap(HttpAuthentication::bearer(ok_validator))
         .service(todos_list_handler)
         .service(create_todo_handler)
         .service(get_todo_handler)
@@ -22,7 +28,6 @@ pub(crate) fn web_service_config(cfg: &mut web::ServiceConfig) {
     cfg.service(scope);
 }
 
-#[get("/healthchecks")]
 pub(crate) async fn healthcheck_handler(state: web::Data<AppState>) -> impl Responder {
     const MESSAGE: &str = "All Depended Service are in healthy shape";
     match state.connection_pool.list_database_names(None, None).await {

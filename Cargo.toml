@@ -6,9 +6,11 @@ edition = "2021"
 [dependencies]
 actix-cors = "0.7.0"
 actix-web = "4.6.0"
+actix-web-httpauth = "0.8.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 env_logger = "0.11.3"
 futures = "0.3.30"
+jsonwebtoken = "9.3.0"
 mongodb = "2.8.2"
 serde = { version = "1.0.203", features = ["derive"] }
 uuid = { version = "1.8.0", features = ["v4"] }
